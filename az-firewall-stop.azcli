@@ -1,0 +1,33 @@
+# Begin Variables
+firewall_name=<Your Azure Firewall Resource Name here>
+firewall_resource_group=<Your Azure Firewall's Resource Group here>
+
+## EXAMPLE VARIABLES
+#firewall_name=demo-azfw
+#firewall_resource_group=AzureFirewall-StartStop-demo
+## 
+
+# End Variables
+
+# Begin Script
+
+# Find exact firewall
+read firewall_id firewall_sku <<< $(az network firewall show --name $firewall_name --resource-group $firewall_resource_group -o tsv --query "{id:id,sku:sku.name}")
+err=$?
+
+# Confirm command success
+if [ $err != 0 ]; then
+    echo -e "Could not find firewall!"
+    exit
+
+# Deallocate VWan Hub firewall
+elif [ "$firewall_sku" == "AZFW_Hub" ]; then
+    az network firewall update --ids $firewall_id --vhub ''
+
+# Deallocate VNet firewall
+else
+    # Removing all IP configurations and a management IP configuration, if it
+    # exists, needs to be done in a single operation
+    az network firewall update --ids $firewall_id --remove ipConfigurations --remove managementIpConfiguration
+fi
+# End Script
