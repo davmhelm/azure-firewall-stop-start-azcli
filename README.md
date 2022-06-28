@@ -12,7 +12,7 @@ My scripts base their approach on source code for PSAzureFirewall object. https:
 
 Hopefully, someday the Azure CLI for firewalls will include native support for an allocate and deallocate command (or start and stop like for VMs). 
 
-My current implementation of Allocate is not as performant as the PowerShell approach because I'm having to make multiple update calls. I could figure out how to format the JSON properties and arrays ahead of time so I'd only make one call to `az network firewall update` in any scenario. But I'd probably be better served learning how to write the commands in Azure CLI natively. :smile:
+My current implementation of Allocate is not as performant as the PowerShell approach because I'm having to make multiple update calls. I could figure out how to format the JSON properties and arrays ahead of time so I'd only make one call to `az network firewall update` in any scenario. But I'd probably be better served learning how to develop native Azure CLI commands to perform these two operations. :smile:
 
 # Scripts
 These scripts assume you're running in a Bash shell. They won't work on Windows CMD, and haven't been tested with any other shells (zsh, ksh, etc.)
