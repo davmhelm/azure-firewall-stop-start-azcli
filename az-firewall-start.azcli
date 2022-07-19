@@ -28,18 +28,18 @@ management_ip_name=
 management_ip_resource_group=$firewall_resource_group
 
 ## EXAMPLE VARIABLES
-firewall_name=demo-azfw
-firewall_resource_group=AzureFirewall-StartStop-demo
-#virtualwan_name=
-#virtualwan_hub_name=
-virtual_network_name=demo-azfw-vnet
-#virtual_network_resource_group=$firewall_resource_group
-public_ip_collection=(
-    "demo-azfw-pip,$firewall_resource_group"
-    "demo-azfw-pip2,$firewall_resource_group"
-)
-management_ip_name=demo-azfw-mgmt-pip
-management_ip_resource_group=$firewall_resource_group
+    #firewall_name=demo-azfw
+    #firewall_resource_group=AzureFirewall-StartStop-demo
+    #virtualwan_name=
+    #virtualwan_hub_name=
+    #virtual_network_name=demo-azfw-vnet
+    #virtual_network_resource_group=$firewall_resource_group
+    #public_ip_collection=(
+    #    "demo-azfw-pip,$firewall_resource_group"
+    #    "demo-azfw-pip2,$firewall_resource_group"
+    #)
+    #management_ip_name=demo-azfw-mgmt-pip
+    #management_ip_resource_group=$firewall_resource_group
 ##
 
 # End Variables
@@ -114,7 +114,7 @@ else
 
         # Add remaining ip-configs, if there are any
         for ((i=1; i<${#pip_ids[@]}; i++)); do
-            az network firewall ip-config create --name "AzureFirewallIpConfiguration$i" --firewall-name $firewall_name --resource-group $firewall_resource_group --public-ip-address ${pip_ids[$i]} --vnet-name $virtual_network_name
+            az network firewall ip-config create --name "AzureFirewallIpConfiguration$i" --firewall-name $firewall_name --resource-group $firewall_resource_group --public-ip-address ${pip_ids[$i]}
         done
     fi
         
