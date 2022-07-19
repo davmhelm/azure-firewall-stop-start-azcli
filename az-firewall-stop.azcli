@@ -3,8 +3,8 @@ firewall_name=<Your Azure Firewall Resource Name here>
 firewall_resource_group=<Your Azure Firewall's Resource Group here>
 
 ## EXAMPLE VARIABLES
-#firewall_name=demo-azfw
-#firewall_resource_group=AzureFirewall-StartStop-demo
+    #firewall_name=demo-azfw
+    #firewall_resource_group=AzureFirewall-StartStop-demo
 ## 
 
 # End Variables
