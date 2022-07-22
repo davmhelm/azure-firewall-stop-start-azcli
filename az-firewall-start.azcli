@@ -2,44 +2,38 @@
 firewall_name=<Your Azure Firewall Resource Name here>
 firewall_resource_group=<Your Azure Firewall's Resource Group here>
 
+# Previously this script used unique resource group variables for different components like VNet, public IPs etc.
+# Per the Azure Firewall FAQ, this is unnecessary. The firewall, VNet, and the public IP address all must be in the same resource group.
+# https://docs.microsoft.com/en-us/azure/firewall/firewall-faq#are-there-any-firewall-resource-group-restrictions
+
 # For any variable below that doesn't match your scenario, leave the variable undefined
 
 # Scenario: Firewall in an VWAN Secured Hub
-# Default resource group is the firewall's resource group, but you can change this as needed.
 virtualwan_hub_name=
-virtualwan_hub_resource_group=$firewall_resource_group
 
 # Scenario: Firewall in an Azure VNet
-# Default resource group is the firewall's resource group
-# current Azure CLI firewall extension syntax does not support VNet being in a different resource group
 virtual_network_name=
-#virtual_network_resource_group=$firewall_resource_group
 
 # Provide one or more public IPs to assign to the Firewall
-# Each entry in the collection is a tuple of "pip name,resource group name"
+# Each entry in the collection is the resource name of a public IP
 public_ip_collection=( 
-    #"public_ip_resource_name1,public_ip_resource_group1" # Example Entry
-    #"public_ip_resource_name2,public_ip_resource_group2" # Example Entry
+    #"public_ip_resource_name1" # Example Entry
+    #"public_ip_resource_name2" # Example Entry
 )
 
 # Scenario: Firewall in an Azure VNet with forced tunneling enabled (also define public IP collection above)
-# Default resource group is the firewall's resource group, but you can change this as needed.
 management_ip_name=
-management_ip_resource_group=$firewall_resource_group
 
 ## EXAMPLE VARIABLES
     #firewall_name=demo-azfw
     #firewall_resource_group=AzureFirewall-StartStop-demo
-    #virtualwan_name=
     #virtualwan_hub_name=
     #virtual_network_name=demo-azfw-vnet
-    #virtual_network_resource_group=$firewall_resource_group
     #public_ip_collection=(
-    #    "demo-azfw-pip,$firewall_resource_group"
-    #    "demo-azfw-pip2,$firewall_resource_group"
+    #    "demo-azfw-pip"
+    #    "demo-azfw-pip2"
     #)
     #management_ip_name=demo-azfw-mgmt-pip
-    #management_ip_resource_group=$firewall_resource_group
 ##
 
 # End Variables
@@ -61,7 +55,7 @@ elif [ "$firewall_sku" == "AZFW_Hub" ]; then
     if [ -z "$virtualwan_hub_name" ]; then
         echo "Must define hub name and resource group for a firewall with SKU AZFW_Hub."
     else
-        vhub_id=$(az network vhub show --name $virtualwan_hub_name --resource-group $virtualwan_hub_resource_group -o tsv --query "id")
+        vhub_id=$(az network vhub show --name $virtualwan_hub_name --resource-group $firewall_resource_group -o tsv --query "id")
         err=$?
         
         if [ $err == 0 ]; then
@@ -69,7 +63,7 @@ elif [ "$firewall_sku" == "AZFW_Hub" ]; then
             az network firewall update --ids $firewall_id --vhub $vhub_id
         else 
             # Something went wrong getting the VWan Hub
-            echo "Could not locate vwan hub named \"$virtualwan_hub_name\" in resource group named \"$virtualwan_hub_resource_group\"."
+            echo "Could not locate vwan hub named \"$virtualwan_hub_name\" in resource group \"$firewall_resource_group\"."
         fi
     fi
 
@@ -79,22 +73,14 @@ else
         # Firewall is not in a VWAN Hub, but VNet or public IPs have not been provided.
         echo "Must define both VNet and public ip collection for a firewall in a VNet."
     else
-        # Find exact VNet
-        # No point in this currently, ip-config create commands don't support providing a vnet by ID
-        #firewall_vnet_id=$(az network vnet show --name $virtual_network_name --resource-group $virtual_network_resource_group -o tsv --query "id")
 
         pip_ids=()
-        for pip_tuple in ${public_ip_collection[@]}; do
-            # Parse each string in the array to its individual components
-            IFS=,
-            read pip_name pip_resource_group <<< ${pip_tuple}
-            unset IFS
-
+        for pip_name in ${public_ip_collection[@]}; do
             # Find the PIP's resource ID and add it to the array
-            pip_ids+=( $(az network public-ip show --name $pip_name --resource-group $pip_resource_group -o tsv --query "id") )
+            pip_ids+=( $(az network public-ip show --name $pip_name --resource-group $firewall_resource_group -o tsv --query "id") )
 
             if [ $? != 0 ]; then
-                echo "Could not find public ip resource named \"$pip_tuple[0]\" in resource group \"$pip_tuple[1]\"."
+                echo "Could not find public ip resource named \"$pip_name\" in resource group \"$firewall_resource_group\"."
             fi
         done
 
@@ -106,7 +92,7 @@ else
 
         else
             # Management IP provided, assuming forced tunneling is in use
-            mgmt_pip_id=$(az network public-ip show --name $management_ip_name --resource-group $management_ip_resource_group -o tsv --query "id")
+            mgmt_pip_id=$(az network public-ip show --name $management_ip_name --resource-group $firewall_resource_group -o tsv --query "id")
 
             # First ip-config must include management IP config and VNet info
             az network firewall ip-config create --name "AzureFirewallIpConfiguration0" --firewall-name $firewall_name --resource-group $firewall_resource_group --public-ip-address ${pip_ids[0]} --vnet-name $virtual_network_name --m-name "AzureFirewallMgmtIpConfiguration" --m-public-ip-address $mgmt_pip_id --m-vnet-name $virtual_network_name
