@@ -47,14 +47,16 @@ err=$?
 # Confirm command success
 if [ $err != 0 ]; then
     echo -e "Could not find firewall!"
-    exit
+    exit 1
 
 # Allocate VWan Hub firewall
 elif [ "$firewall_sku" == "AZFW_Hub" ]; then
 
     if [ -z "$virtualwan_hub_name" ]; then
         echo "Must define hub name and resource group for a firewall with SKU AZFW_Hub."
+        exit 1
     else
+        echo "Allocating firewall \"$firewall_name\" in resource group \"$firewall_resource_group\" to VWAN Hub \"$virtualwan_hub_name\"..."
         vhub_id=$(az network vhub show --name $virtualwan_hub_name --resource-group $firewall_resource_group -o tsv --query "id")
         err=$?
         
@@ -72,7 +74,17 @@ else
     if [ -z "$virtual_network_name" -o -z "$public_ip_collection" ]; then
         # Firewall is not in a VWAN Hub, but VNet or public IPs have not been provided.
         echo "Must define both VNet and public ip collection for a firewall in a VNet."
+        exit 1
     else
+        # Firewall is not in a VWAN Hub, begin allocation in VNet.
+        
+        # Make sure we have at least one public IP
+        if [[ ${#public_ip_collection[@]} < 1 ]]; then
+            echo "Must define at least one public IP resource in public_ip_collection variable."
+            exit 1
+        fi
+
+        echo -n "Allocating firewall \"$firewall_name\" in resource group \"$firewall_resource_group\" to VNet \"$virtual_network_name\", with public IP(s) \"${public_ip_collection[@]}\", "
 
         pip_ids=()
         for pip_name in ${public_ip_collection[@]}; do
@@ -86,12 +98,15 @@ else
 
         if [ -z "$management_ip_name" ]; then
             # No management IP provided, assuming forced tunneling is not in use
+            echo "without split tunneling enabled..."
             
             # First ip-config must include VNet info
             az network firewall ip-config create --name "AzureFirewallIpConfiguration0" --firewall-name $firewall_name --resource-group $firewall_resource_group --public-ip-address ${pip_ids[0]} --vnet-name $virtual_network_name
 
         else
             # Management IP provided, assuming forced tunneling is in use
+            echo "with split tunneling enabled using public IP \"$management_ip_name\"..."
+            
             mgmt_pip_id=$(az network public-ip show --name $management_ip_name --resource-group $firewall_resource_group -o tsv --query "id")
 
             # First ip-config must include management IP config and VNet info

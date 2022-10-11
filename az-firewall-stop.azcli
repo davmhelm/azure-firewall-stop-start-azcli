@@ -18,16 +18,18 @@ err=$?
 # Confirm command success
 if [ $err != 0 ]; then
     echo -e "Could not find firewall!"
-    exit
+    exit 1
 
 # Deallocate VWan Hub firewall
 elif [ "$firewall_sku" == "AZFW_Hub" ]; then
+    echo "Deallocating firewall \"$firewall_name\" in resource group \"$firewall_resource_group\" from VWAN Hub \"$virtualwan_hub_name\"..."
     az network firewall update --ids $firewall_id --vhub ''
 
 # Deallocate VNet firewall
 else
     # Removing all IP configurations and a management IP configuration, if it
     # exists, needs to be done in a single operation
+    echo "Deallocating firewall \"$firewall_name\" in resource group \"$firewall_resource_group\" from VNet \"$virtual_network_name\"..."
     az network firewall update --ids $firewall_id --remove ipConfigurations --remove managementIpConfiguration
 fi
 # End Script
