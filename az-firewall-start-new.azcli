@@ -1,0 +1,136 @@
+# Begin Variables
+firewall_name=<Your Azure Firewall Resource Name here>
+firewall_resource_group=<Your Azure Firewall's Resource Group here>
+
+# Per the Azure Firewall FAQ: firewall, VNet, and the public IP address all must be in the same resource group.
+# https://docs.microsoft.com/en-us/azure/firewall/firewall-faq#are-there-any-firewall-resource-group-restrictions
+
+# For any variable below that doesn't match your scenario, leave the variable undefined
+
+# Scenario: Firewall in an VWAN Secured Hub
+virtualwan_hub_name=
+
+# Scenario: Firewall in an Azure VNet
+virtual_network_name=
+
+# Provide one or more public IPs to assign to the Firewall
+# Each entry in the collection is the resource name of a public IP
+public_ip_collection=( 
+    #"public_ip_resource_name1" # Example Entry
+    #"public_ip_resource_name2" # Example Entry
+)
+
+# Scenario: Firewall in an Azure VNet with forced tunneling enabled (also define public IP collection above)
+management_ip_name=
+
+## EXAMPLE VARIABLES
+    #firewall_name=demo-azfw
+    #firewall_resource_group=AzureFirewall-StartStop-demo
+    #virtualwan_hub_name=
+    #virtual_network_name=demo-azfw-vnet
+    #public_ip_collection=(
+    #    "demo-azfw-pip"
+    #    "demo-azfw-pip2"
+    #)
+    #management_ip_name=demo-azfw-mgmt-pip
+##
+
+# End Variables
+
+# Begin Script
+# test for required command "jo"
+if ! [ "$(command -v jo)" ]; then
+    echo -e "Required command 'jo' not found on system."
+    exit 1
+fi
+
+# Find exact firewall
+read firewall_id firewall_sku <<< $(az network firewall show --name $firewall_name --resource-group $firewall_resource_group -o tsv --query "{id:id,sku:sku.name}")
+err=$?
+
+# Confirm command success
+if [ $err != 0 ]; then
+    echo -e "Could not find firewall \"$firewall_name\" in resource group \"$firewall_resource_group\"!"
+    exit 1
+
+# Allocate VWan Hub firewall
+elif [ "$firewall_sku" == "AZFW_Hub" ]; then
+
+    if [ -z "$virtualwan_hub_name" ]; then
+        echo "Must define hub name and resource group for a firewall with SKU AZFW_Hub."
+        exit 1
+    else
+        echo "Allocating firewall \"$firewall_name\" in resource group \"$firewall_resource_group\" to VWAN Hub \"$virtualwan_hub_name\"..."
+        vhub_id=$(az network vhub show --name $virtualwan_hub_name --resource-group $firewall_resource_group -o tsv --query "id")
+        err=$?
+        
+        if [ $err == 0 ]; then
+            # Found VWan Hub, allocate firewall to it
+            az network firewall update --ids $firewall_id --vhub $vhub_id
+        else 
+            # Something went wrong getting the VWan Hub
+            echo "Could not locate vwan hub named \"$virtualwan_hub_name\" in resource group \"$firewall_resource_group\"."
+            exit 1
+        fi
+    fi
+
+# Allocate VNet firewall
+else 
+    if [ -z "$virtual_network_name" -o -z "$public_ip_collection" ]; then
+        # Firewall is not in a VWAN Hub, but VNet or public IPs have not been provided.
+        echo "Must define both VNet and public ip collection for a firewall in a VNet."
+        exit 1
+    else
+        # Firewall is not in a VWAN Hub, begin allocation in VNet.
+        
+        # Make sure we have at least one public IP
+        if [[ ${#public_ip_collection[@]} < 1 ]]; then
+            echo "Must define at least one public IP resource in public_ip_collection variable."
+            exit 1
+        fi
+
+        echo -n "Allocating firewall \"$firewall_name\" in resource group \"$firewall_resource_group\" to VNet \"$virtual_network_name\", with public IP(s) \"${public_ip_collection[@]}\", "
+        
+        vnet_id=$(az network vnet show --name $virtual_network_name --resource-group $firewall_resource_group --query "id" -o tsv)
+
+        pip_ids=()
+        for pip_name in ${public_ip_collection[@]}; do
+            # Find the PIP's resource ID and add it to the array
+            pip_ids+=( $(az network public-ip show --name $pip_name --resource-group $firewall_resource_group -o tsv --query "id") )
+
+            if [ $? != 0 ]; then
+                echo "Could not find public ip resource named \"$pip_name\" in resource group \"$firewall_resource_group\"."
+                exit 1
+            fi
+        done
+
+        # Build JSON array of IP configurations, first one must include subnet information
+        ipconfigs=()
+        ipconfigs+=( $(jo name="AzureFirewallIpConfiguration0" type="Microsoft.Network/azureFirewalls/azureFirewallIpConfigurations" properties=$(jo publicIPAddress=$(jo id=${pip_ids[0]}) subnet=$(jo id="$vnet_id/subnets/AzureFirewallSubnet") ) ) )
+        for ((i=1; i<${#pip_ids[@]}; i++ )); do
+            ipconfigs+=( $(jo name="AzureFirewallIpConfiguration$i" type="Microsoft.Network/azureFirewalls/azureFirewallIpConfigurations" properties=$(jo publicIPAddress=$(jo id=${pip_ids[i]}) ) ) )
+        done
+        ipconfig_json=$(jo -a ${ipconfigs[@]})
+
+        if [ -z "$management_ip_name" ]; then
+            echo "without split tunneling enabled..."
+            # No management IP provided, assuming forced tunneling is not in use
+            
+            # Update firewall with one or more IP configurations, no management IP configuration
+            az network firewall update --ids $firewall_id --set ipConfigurations=$ipconfig_json
+        else
+            # Management IP provided, assuming forced tunneling is in use
+            echo "with split tunneling enabled using public IP \"$management_ip_name\"..."
+
+            mgmt_pip_id=$(az network public-ip show --name $management_ip_name --resource-group $firewall_resource_group -o tsv --query "id")
+
+            mgmt_ipconfig_json=$(jo name="AzureFirewallMgmtIpConfiguration" type="Microsoft.Network/azureFirewalls/azureFirewallIpConfigurations" properties=$(jo publicIPAddress=$(jo id=$mgmt_pip_id) subnet=$(jo id="$vnet_id/subnets/AzureFirewallManagementSubnet") ) )
+
+            # Update firewall with one or more IP configurations, and management IP configuration
+            az network firewall update  --ids $firewall_id --set ipConfigurations=$ipconfig_json --set managementIpConfiguration=$mgmt_ipconfig_json
+        fi
+
+    fi
+        
+fi
+# End Script
