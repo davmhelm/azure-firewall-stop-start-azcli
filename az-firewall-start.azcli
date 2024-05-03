@@ -40,6 +40,9 @@ management_ip_name=
 
 # Begin Script
 
+# Make sure az network firewall extension is installed, and upgrade to latest if needed
+az extension add --upgrade --name azure-firewall
+
 # Find exact firewall
 read firewall_id firewall_sku <<< $(az network firewall show --name $firewall_name --resource-group $firewall_resource_group -o tsv --query "{id:id,sku:sku.name}")
 err=$?
